@@ -1,0 +1,13 @@
+pillow
+reportlab
+pyinstaller
+os
+sys
+subprocess
+re
+shutil
+pathlib
+webbrowser
+pdfplumber
+pdf2image
+pytesseract
