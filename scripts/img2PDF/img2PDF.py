@@ -1,144 +1,131 @@
 import os
-from difflib import get_close_matches
-from PIL import Image, UnidentifiedImageError
-from reportlab.pdfgen import canvas
+import sys
+from pathlib import Path
 
+def list_directory_contents():
+    """List all contents of the current directory."""
+    print("\nDirectory contents:")
+    for item in os.listdir():
+        print(f"  - {item}")
 
-def list_directory_contents(directory: str = ".") -> None:
-    """
-    List all contents of the directory.
-    """
-    print("\nCurrent Directory Contents:")
+def list_images_with_extensions():
+    """List images grouped by extensions."""
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif']
+    images = [file for file in os.listdir() if os.path.splitext(file)[1].lower() in image_extensions]
+    return images
+
+def find_closest_match(image_name, images):
+    """Find the closest match for the image name."""
+    from difflib import get_close_matches
+    matches = get_close_matches(image_name, images)
+    return matches[0] if matches else None
+
+def validate_image(image_path):
+    """Validate if the file is a valid image."""
     try:
-        files = os.listdir(directory)
-        for file in files:
-            print(file)
-    except OSError as e:
-        print(f"Error accessing directory: {e}")
-
-
-def list_images_with_extensions(directory: str = ".") -> list:
-    """
-    Lists images with extensions grouped together.
-    """
-    supported_extensions = {'.jpg', '.jpeg', '.png'}
-    images = {}
-
-    try:
-        for file in os.listdir(directory):
-            ext = os.path.splitext(file)[1].lower()
-            if ext in supported_extensions:
-                images.setdefault(ext, []).append(file)
-
-        print("\nImages Grouped by Extension:")
-        for ext, files in images.items():
-            print(f"{ext.upper()} Files:")
-            for img in files:
-                print(f"  - {img}")
-
-        # Flatten the list of images
-        return [img for img_list in images.values() for img in img_list]
-    except OSError as e:
-        print(f"Error accessing directory: {e}")
-        return []
-
-
-def find_closest_match(image_name: str, images: list) -> str:
-    """
-    Finds the closest match for the given image name from the list of images.
-    """
-    matches = get_close_matches(image_name.lower(), [img.lower() for img in images])
-    if matches:
-        return next(img for img in images if img.lower() == matches[0])
-    return None
-
-
-def validate_image(image_path: str) -> bool:
-    """
-    Validates if the image file can be opened by Pillow.
-    """
-    try:
+        from PIL import Image
         with Image.open(image_path) as img:
             img.verify()
         return True
-    except UnidentifiedImageError:
-        print(f"Invalid or corrupted image file: {image_path}")
+    except Exception:
         return False
-    except Exception as e:
-        print(f"Error validating image: {e}")
-        return False
-
-
-def convert_image_to_pdf(image_path: str, output_path: str) -> None:
-    """
-    Converts an image to a PDF document, setting metadata for the browser to display the file name.
-    """
-    try:
-        with Image.open(image_path) as img:
-            width, height = img.size
-            c = canvas.Canvas(output_path, pagesize=(width, height))
-            c.setTitle(os.path.basename(output_path))  # Set PDF title to display in browser
-            c.drawImage(image_path, 0, 0, width, height)
-            c.save()
-        print(f"Successfully saved PDF: {output_path}")
-    except Exception as e:
-        print(f"Error converting image to PDF: {e}")
-
 
 def main():
     """
     Main function to handle the workflow.
     """
-    while True:
-        # Step 1: List All Directory Contents
-        list_directory_contents()
+    try:
+        if len(sys.argv) < 3:
+            print("Usage: python img2PDF.py <mode> <image_path> [--export_path=<path>]")
+            sys.exit(1)
 
-        # Step 2: List Images Grouped by Extensions
-        images = list_images_with_extensions()
-        if not images:
-            print("\nNo image files found in the current directory.")
-            return
+        mode = sys.argv[1].strip().lower()
+        image_path = sys.argv[2]
+        export_path = Path("exports")
 
-        # Step 3: Ask User for the Image Name
+        # Check for optional export path argument
+        for arg in sys.argv[3:]:
+            if arg.startswith("--export_path="):
+                export_path = Path(arg.split("=", 1)[1])
+                break
+
+        if not export_path.exists():
+            export_path.mkdir(parents=True, exist_ok=True)
+
+        if mode == "cli":
+            script_directory = Path(__file__).parent.parent.parent
+            list_directory_contents()
+
+            if not os.path.exists(image_path):
+                print(f"Error: Image file not found at {image_path}")
+                sys.exit(1)
+
+        elif mode == "gui":
+            if not os.path.exists(image_path):
+                print(f"Error: Image file not found at {image_path}")
+                sys.exit(1)
+
+        else:
+            print("Invalid mode. Use 'cli' or 'gui'.")
+            sys.exit(1)
+
         while True:
-            image_name = input("\nEnter the name of the image you want to convert to PDF (or type 'exit' to quit): ").strip()
-            if image_name.lower() == 'exit':
-                print("Exiting program. Goodbye!")
+            # Step 1: List All Directory Contents
+            list_directory_contents()
+
+            # Step 2: List Images Grouped by Extensions
+            images = list_images_with_extensions()
+            if not images:
+                print("\nNo image files found in the current directory.")
                 return
 
-            closest_match = find_closest_match(image_name, images)
-            if closest_match:
-                print(f"Closest match found: {closest_match}")
-                break
-            else:
-                print("No matching image found. Please try again.")
+            # Step 3: Ask User for the Image Name
+            while True:
+                image_name = input("\nEnter the name of the image you want to convert to PDF (or type 'exit' to quit): ").strip()
+                if image_name.lower() == 'exit':
+                    print("Exiting program. Goodbye!")
+                    return
 
-        # Validate the selected image
-        if not validate_image(closest_match):
-            print(f"The file '{closest_match}' is not a valid image. Please try another file.")
-            continue
-
-        # Step 4: Ask User for the PDF Name
-        while True:
-            output_pdf_name = input("Enter the name for the output PDF file (without extension): ").strip()
-            output_pdf_path = f"{output_pdf_name}.pdf"
-
-            # Check if file exists
-            if os.path.exists(output_pdf_path):
-                overwrite = input(f"The file '{output_pdf_path}' already exists. Do you want to overwrite it? (y/n): ").strip().lower()
-                if overwrite == 'y':
+                closest_match = find_closest_match(image_name, images)
+                if closest_match:
+                    print(f"Closest match found: {closest_match}")
                     break
-                elif overwrite == 'n':
-                    print("Choose a different name.")
                 else:
-                    print("Invalid input. Please type 'y' or 'n'.")
-            else:
-                break
+                    print("No matching image found. Please try again.")
 
-        # Step 5: Convert Image to PDF
-        print(f"Converting '{closest_match}' to PDF...")
-        convert_image_to_pdf(closest_match, output_pdf_path)
+            # Validate the selected image
+            if not validate_image(closest_match):
+                print(f"The file '{closest_match}' is not a valid image. Please try another file.")
+                continue
 
+            # Step 4: Ask User for the PDF Name
+            while True:
+                output_pdf_name = input("Enter the name for the output PDF file (without extension): ").strip()
+                output_pdf_path = export_path / f"{output_pdf_name}.pdf"
+
+                # Check if file exists
+                if output_pdf_path.exists():
+                    overwrite = input(f"The file '{output_pdf_path}' already exists. Do you want to overwrite it? (y/n): ").strip().lower()
+                    if overwrite == 'y':
+                        break
+                    elif overwrite == 'n':
+                        print("Choose a different name.")
+                    else:
+                        print("Invalid input. Please enter 'y' or 'n'.")
+                else:
+                    break
+
+            # Convert image to PDF
+            try:
+                from PIL import Image
+                with Image.open(closest_match) as img:
+                    img.save(output_pdf_path, "PDF", resolution=100.0)
+                print(f"Image '{closest_match}' has been converted to PDF and saved as '{output_pdf_path}'.")
+            except Exception as e:
+                print(f"Failed to convert image to PDF: {e}")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
